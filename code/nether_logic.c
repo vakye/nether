@@ -62,6 +62,38 @@ local void SetWire(wire_id ID, wire Bit)
     Wires[ID] = (Bit & 1);
 }
 
+local void AddWires(wire_id* IDs, u32 Count)
+{
+    Assert(WireCount + Count <= ArrayCount(Wires));
+
+    for (u32 Index = 0; Index < Count; Index++)
+    {
+        IDs[Index] = WireCount + Index;
+    }
+
+    WireCount += Count;
+}
+
+local u64 GetWires(wire_id* IDs, u32 Count)
+{
+    Assert(Count <= 64);
+
+    u64 Result = 0;
+
+    for (u32 Index = 0; Index < Count; Index++)
+        Result |= ((u64)GetWire(IDs[Index])) << Index;
+
+    return (Result);
+}
+
+local void SetWires(wire_id* IDs, u32 Count, u64 Bits)
+{
+    Assert(Count <= 64);
+
+    for (u32 Index = 0; Index < Count; Index++)
+        SetWire(IDs[Index], (Bits >> Index) & 1);
+}
+
 // NOTE(vak): Logic gates
 
 local void NAND(wire_id A, wire_id B, wire_id Out)
@@ -119,85 +151,246 @@ local void NOT(wire_id In, wire_id Out)
     NAND(In, In, Out);
 }
 
-// NOTE(vak): Tests
+// NOTE(vak): Adder
 
-local void TestUnary(string Name, wire_id In, wire_id Out)
+local void HalfAdder1(wire_id A, wire_id B, wire_id Sum, wire_id Carry)
 {
-    // NOTE(vak): Header
+    XOR(A, B, Sum);
+    AND(A, B, Carry);
+}
 
-    Print(Str("Truth table "));
-
-    Print(Str("("));
-    Print(Name);
-    Print(Str(")"));
-
-    Print(Str(":"));
-    PrintNewLine();
-
-    Println(Str("  In  |  Out  "));
-
-    // NOTE(vak): Test
-
-    for (u8 State = 0; State <= 1; State++)
+local void FullAdder1(wire_id A, wire_id B, wire_id C, wire_id Sum, wire_id Carry)
+{
+    // NOTE(vak): Sum
     {
-        SetWire(In, State);
+        wire_id SumAB = AddWire();
 
-        SimulateCircuit();
+        XOR(A, B, SumAB);
+        XOR(C, SumAB, Sum);
+    }
 
-        Print(Str("  "));
-        Print(GetWire(In) ? Str("1") : Str("0"));
-        Print(Str("   "));
+    // NOTE(vak): Carry
+    {
+        wire_id AndAB = AddWire();
+        wire_id AndAC = AddWire();
+        wire_id AndBC = AddWire();
 
-        Print(Str("|"));
+        AND(A, B, AndAB);
+        AND(A, C, AndAC);
+        AND(B, C, AndBC);
 
-        Print(Str("  "));
-        Print(GetWire(Out) ? Str("1") : Str("0"));
-        Print(Str("  "));
+        wire_id D = AddWire();
 
-        PrintNewLine();
+        OR(AndAB, AndAC, D);
+        OR(D, AndBC, Carry);
     }
 }
 
-local void TestBinary(string Name, wire_id A, wire_id B, wire_id Out)
+local void HalfAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id* Sum, wire_id Carry)
 {
-    // NOTE(vak): Header
+    Assert(BitCount >= 1);
 
-    Print(Str("Truth table "));
+    wire_id NextCarry = (BitCount == 1) ? (Carry) : (AddWire());
 
-    Print(Str("("));
-    Print(Name);
-    Print(Str(")"));
+    HalfAdder1(A[0], B[0], Sum[0], NextCarry);
 
-    Print(Str(":"));
-    PrintNewLine();
+    for (u32 BitIndex = 1; BitIndex < BitCount; BitIndex++)
+    {
+        wire_id LastCarry = NextCarry;
 
-    Println(Str("  A  |  B  |  Out  "));
+        NextCarry = ((BitIndex + 1) == BitCount) ? (Carry) : (AddWire());
 
-    // NOTE(vak): Test
+        FullAdder1(
+            A[BitIndex],
+            B[BitIndex],
+            LastCarry,
+            Sum[BitIndex],
+            NextCarry
+        );
+    }
+}
 
-    for (u8 State = 0; State <= 3; State++)
+local void FullAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id C, wire_id* Sum, wire_id Carry)
+{
+    Assert(BitCount >= 1);
+
+    wire_id LastCarry = C;
+    wire_id NextCarry = (BitCount == 1) ? (Carry) : (AddWire());
+
+    FullAdder1(A[0], B[0], LastCarry, Sum[0], NextCarry);
+
+    for (u32 BitIndex = 1; BitIndex < BitCount; BitIndex++)
+    {
+        LastCarry = NextCarry;
+        NextCarry = ((BitIndex + 1) == BitCount) ? (Carry) : (AddWire());
+
+        FullAdder1(
+            A[BitIndex],
+            B[BitIndex],
+            LastCarry,
+            Sum[BitIndex],
+            NextCarry
+        );
+    }
+}
+
+// NOTE(vak): Tests
+
+local void TestHalfAdder1(void)
+{
+    Print(Str("Testing HalfAdder1... "));
+
+    ResetCircuit();
+
+    wire_id A     = AddWire();
+    wire_id B     = AddWire();
+    wire_id Sum   = AddWire();
+    wire_id Carry = AddWire();
+
+    HalfAdder1(A, B, Sum, Carry);
+
+    b32 Successful = true;
+
+    for (u32 State = 0; (State <= 3) & (Successful); State++)
     {
         SetWire(A, (State >> 1) & 1);
         SetWire(B, (State >> 0) & 1);
 
         SimulateCircuit();
 
-        Print(Str("  "));
-        Print(GetWire(A) ? Str("1") : Str("0"));
-        Print(Str("  "));
+        u32 Desired = GetWire(A) + GetWire(B);
 
-        Print(Str("|"));
+        wire DesiredSum   = (wire)((Desired >> 0) & 1);
+        wire DesiredCarry = (wire)((Desired >> 1) & 1);
 
-        Print(Str("  "));
-        Print(GetWire(B) ? Str("1") : Str("0"));
-        Print(Str("  "));
-
-        Print(Str("|"));
-
-        Print(Str("  "));
-        Print(GetWire(Out) ? Str("1") : Str("0"));
-        Print(Str("  "));
-
-        PrintNewLine();
+        Successful &= (GetWire(Sum)   == DesiredSum);
+        Successful &= (GetWire(Carry) == DesiredCarry);
     }
+
+    Println(Successful ? Str("SUCCESS") : Str("FAILED"));
+}
+
+local void TestFullAdder1(void)
+{
+    Print(Str("Testing FullAdder1... "));
+
+    ResetCircuit();
+
+    wire_id A     = AddWire();
+    wire_id B     = AddWire();
+    wire_id C     = AddWire();
+    wire_id Sum   = AddWire();
+    wire_id Carry = AddWire();
+
+    FullAdder1(A, B, C, Sum, Carry);
+
+    b32 Successful = true;
+
+    for (u32 State = 0; (State <= 7) & (Successful); State++)
+    {
+        SetWire(A, (State >> 2) & 1);
+        SetWire(B, (State >> 1) & 1);
+        SetWire(C, (State >> 0) & 1);
+
+        SimulateCircuit();
+
+        u32 Desired = GetWire(A) + GetWire(B) + GetWire(C);
+
+        wire DesiredSum   = (wire)((Desired >> 0) & 1);
+        wire DesiredCarry = (wire)((Desired >> 1) & 1);
+
+        Successful &= (GetWire(Sum)   == DesiredSum);
+        Successful &= (GetWire(Carry) == DesiredCarry);
+    }
+
+    Println(Successful ? Str("SUCCESS") : Str("FAILED"));
+}
+
+local void TestHalfAdder(void)
+{
+    Print(Str("Testing HalfAdder... "));
+
+    ResetCircuit();
+
+    wire_id Sum[8]               = {0};
+    wire_id A  [ArrayCount(Sum)] = {0};
+    wire_id B  [ArrayCount(Sum)] = {0};
+
+    u32 BitCount = ArrayCount(Sum);
+
+    AddWires(A,   BitCount);
+    AddWires(B,   BitCount);
+    AddWires(Sum, BitCount);
+
+    wire_id Carry = AddWire();
+
+    HalfAdder(BitCount, A, B, Sum, Carry);
+
+    b32 Successful = true;
+
+    u64 SumMask  = (1ull << BitCount) - 1;
+    u64 MaxState = (1ull << BitCount*2) - 1;
+
+    for (u32 State = 0; (State <= MaxState) & (Successful); State++)
+    {
+        SetWires(A, BitCount, SumMask & (State >> BitCount*0));
+        SetWires(B, BitCount, SumMask & (State >> BitCount*1));
+
+        SimulateCircuit();
+
+        u64 Desired      = GetWires(A, BitCount) + GetWires(B, BitCount);
+        u64 DesiredSum   = Desired  & SumMask;
+        u64 DesiredCarry = (Desired >> BitCount) & 1;
+
+        Successful &= (GetWires(Sum, BitCount) == DesiredSum);
+        Successful &= (GetWire(Carry) == DesiredCarry);
+    }
+
+    Println(Successful ? Str("SUCCESS") : Str("FAILED"));
+}
+
+local void TestFullAdder(void)
+{
+    Print(Str("Testing FullAdder... "));
+
+    ResetCircuit();
+
+    wire_id Sum[8]               = {0};
+    wire_id A  [ArrayCount(Sum)] = {0};
+    wire_id B  [ArrayCount(Sum)] = {0};
+
+    u32 BitCount = ArrayCount(Sum);
+
+    AddWires(A,   BitCount);
+    AddWires(B,   BitCount);
+    AddWires(Sum, BitCount);
+
+    wire_id C     = AddWire();
+    wire_id Carry = AddWire();
+
+    FullAdder(BitCount, A, B, C, Sum, Carry);
+
+    b32 Successful = true;
+
+    u64 SumMask  = (1ull << BitCount) - 1;
+    u64 MaxState = (1ull << BitCount*2);
+
+    for (u32 State = 0; (State <= MaxState) & (Successful); State++)
+    {
+        SetWires(A, BitCount, SumMask & (State >> BitCount*0));
+        SetWires(B, BitCount, SumMask & (State >> BitCount*1));
+
+        SetWire(C, (State >> BitCount*2) & 1);
+
+        SimulateCircuit();
+
+        u64 Desired      = GetWires(A, BitCount) + GetWires(B, BitCount) + GetWire(C);
+        u64 DesiredSum   = Desired  & SumMask;
+        u64 DesiredCarry = (Desired >> BitCount) & 1;
+
+        Successful &= (GetWires(Sum, BitCount) == DesiredSum);
+        Successful &= (GetWire(Carry) == DesiredCarry);
+    }
+
+    Println(Successful ? Str("SUCCESS") : Str("FAILED"));
 }
