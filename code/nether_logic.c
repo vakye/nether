@@ -23,6 +23,11 @@ local void ResetCircuit(void)
     GateCount = 0;
 }
 
+local void ResetGates(void)
+{
+    GateCount = 0;
+}
+
 local void SimulateCircuit(void)
 {
     for (u32 GateIndex = 0; GateIndex < GateCount; GateIndex++)
@@ -236,9 +241,164 @@ local void FullAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id C, wire_id* S
 
 // NOTE(vak): Tests
 
+local b32 VerifyTruthTable(
+    wire* TruthTable, u32 RowCount,
+    wire_id* Inputs, u32 InputCount,
+    wire_id* Outputs, u32 OutputCount
+)
+{
+    u32 ColumnCount = InputCount + OutputCount;
+
+    for (u32 RowIndex = 0; RowIndex < RowCount; RowIndex++)
+    {
+        wire* TestTable = TruthTable + (RowIndex * ColumnCount);
+
+        wire* InputValues = TestTable;
+        wire* OutputValues = TestTable + InputCount;
+
+        for (u32 Index = 0; Index < InputCount; Index++)
+        {
+            SetWire(Inputs[Index], InputValues[Index]);
+        }
+
+        SimulateCircuit();
+
+        for (u32 Index = 0; Index < OutputCount; Index++)
+        {
+            if (GetWire(Outputs[Index]) != OutputValues[Index])
+            {
+                goto Failed;
+                break;
+            }
+        }
+    }
+
+    return (true);
+
+Failed:
+    return (false);
+}
+
+local void TestLogicGates(void)
+{
+    persist wire TruthNAND[3 * 4] =
+    {
+        0, 0,    1,
+        0, 1,    1,
+        1, 0,    1,
+        1, 1,    0,
+    };
+
+    persist wire TruthAND[3 * 4] =
+    {
+        0, 0,    0,
+        0, 1,    0,
+        1, 0,    0,
+        1, 1,    1,
+    };
+
+    persist wire TruthOR[3 * 4] =
+    {
+        0, 0,    0,
+        0, 1,    1,
+        1, 0,    1,
+        1, 1,    1,
+    };
+
+    persist wire TruthNOR[3 * 4] =
+    {
+        0, 0,    1,
+        0, 1,    0,
+        1, 0,    0,
+        1, 1,    0,
+    };
+
+    persist wire TruthXOR[3 * 4] =
+    {
+        0, 0,    0,
+        0, 1,    1,
+        1, 0,    1,
+        1, 1,    0,
+    };
+
+    persist wire TruthNOT[2 * 2] =
+    {
+        0, 1,
+        1, 0,
+    };
+
+    // NOTE(vak): Binary logic gates
+    {
+        ResetCircuit();
+
+        wire_id A = AddWire();
+        wire_id B = AddWire();
+        wire_id C = AddWire();
+
+        wire_id Inputs [2] = {A, B};
+        wire_id Outputs[1] = {C};
+
+        #define DoBinaryTest(Name) \
+            { \
+                usize SoFar = Print(Str("Testing " #Name "... ")); \
+                \
+                if (SoFar < TestResultPrintPadding) \
+                    PrintRepeat(Str(" "), TestResultPrintPadding - SoFar); \
+                \
+                ResetGates(); \
+                Name(A, B, C); \
+                \
+                if (VerifyTruthTable(Truth##Name, 4, Inputs, 2, Outputs, 1)) \
+                { \
+                    Println(Str("SUCCESS")); \
+                } \
+                else \
+                { \
+                    Println(Str("FAILED")); \
+                } \
+            }
+
+        DoBinaryTest(NAND)
+        DoBinaryTest(AND)
+        DoBinaryTest(OR)
+        DoBinaryTest(NOR)
+        DoBinaryTest(XOR)
+    }
+
+    // NOTE(vak): Unary logic gates
+    {
+        ResetCircuit();
+
+        wire_id A = AddWire();
+        wire_id B = AddWire();
+
+        wire_id Inputs[1]  = {A};
+        wire_id Outputs[1] = {B};
+
+        usize SoFar = Print(Str("Testing NOT... "));
+
+        if (SoFar < TestResultPrintPadding)
+            PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
+
+        NOT(A, B);
+
+        if (VerifyTruthTable(TruthNOT, 2, Inputs, 1, Outputs, 1))
+        {
+            Println(Str("SUCCESS"));
+        }
+        else
+        {
+            Println(Str("FAILED"));
+        }
+    }
+}
+
 local void TestHalfAdder1(void)
 {
-    Print(Str("Testing HalfAdder1... "));
+    usize SoFar = Print(Str("Testing HalfAdder1... "));
+
+    if (SoFar < TestResultPrintPadding)
+        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
 
     ResetCircuit();
 
@@ -272,7 +432,10 @@ local void TestHalfAdder1(void)
 
 local void TestFullAdder1(void)
 {
-    Print(Str("Testing FullAdder1... "));
+    usize SoFar = Print(Str("Testing FullAdder1... "));
+
+    if (SoFar < TestResultPrintPadding)
+        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
 
     ResetCircuit();
 
@@ -308,7 +471,10 @@ local void TestFullAdder1(void)
 
 local void TestHalfAdder(void)
 {
-    Print(Str("Testing HalfAdder... "));
+    usize SoFar = Print(Str("Testing HalfAdder... "));
+
+    if (SoFar < TestResultPrintPadding)
+        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
 
     ResetCircuit();
 
@@ -351,7 +517,10 @@ local void TestHalfAdder(void)
 
 local void TestFullAdder(void)
 {
-    Print(Str("Testing FullAdder... "));
+    usize SoFar = Print(Str("Testing FullAdder... "));
+
+    if (SoFar < TestResultPrintPadding)
+        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
 
     ResetCircuit();
 

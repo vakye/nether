@@ -36,7 +36,17 @@ local void FullAdder1(wire_id A, wire_id B, wire_id C, wire_id Sum, wire_id Carr
 local void HalfAdder(u32 BitCount, wire_id* A, wire_id* B,            wire_id* Sum, wire_id Carry);
 local void FullAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id C, wire_id* Sum, wire_id Carry);
 
-// NOTE(vak): Tests
+// NOTE(vak): Testing
+
+#define TestResultPrintPadding (25)
+
+local b32 VerifyTruthTable(
+    wire* TruthTable, u32 RowCount,
+    wire_id* Inputs, u32 InputCount,
+    wire_id* Outputs, u32 OutputCount
+);
+
+local void TestLogicGates(void);
 
 local void TestHalfAdder1(void);
 local void TestFullAdder1(void);

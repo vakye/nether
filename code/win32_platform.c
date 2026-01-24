@@ -44,3 +44,14 @@ local usize PrintNewLine(void)
     usize Result = Print(Str("\n"));
     return (Result);
 }
+
+
+local usize PrintRepeat(string Message, usize RepeatCount)
+{
+    usize Result = 0;
+
+    while (RepeatCount--)
+        Result += Print(Message);
+
+    return (Result);
+}
