@@ -38,7 +38,7 @@ local void FullAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id C, wire_id* S
 
 // NOTE(vak): Testing
 
-#define TestResultPrintPadding (25)
+#define TestResultPrintPadding (15)
 
 local b32 VerifyTruthTable(
     wire* TruthTable, u32 RowCount,
@@ -46,10 +46,9 @@ local b32 VerifyTruthTable(
     wire_id* Outputs, u32 OutputCount
 );
 
+local void OutputTestResult(string Name, b32 Successful);
+
 local void TestLogicGates(void);
 
 local void TestHalfAdder1(void);
 local void TestFullAdder1(void);
-
-local void TestHalfAdder(void);
-local void TestFullAdder(void);

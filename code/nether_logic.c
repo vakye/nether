@@ -241,6 +241,21 @@ local void FullAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id C, wire_id* S
 
 // NOTE(vak): Tests
 
+local void OutputTestResult(string Name, b32 Successful)
+{
+    usize SoFar = 0;
+
+    SoFar += Print(Str("["));
+    SoFar += Print(Name);
+    SoFar += Print(Str("]"));
+    SoFar += Print(Str(":"));
+
+    if (SoFar < TestResultPrintPadding)
+        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
+
+    Println(Successful ? Str("[SUCCESS]") : Str("[FAILED]"));
+}
+
 local b32 VerifyTruthTable(
     wire* TruthTable, u32 RowCount,
     wire_id* Inputs, u32 InputCount,
@@ -331,32 +346,17 @@ local void TestLogicGates(void)
     {
         ResetCircuit();
 
-        wire_id A = AddWire();
-        wire_id B = AddWire();
-        wire_id C = AddWire();
+        wire_id Inputs [2] = {0};
+        wire_id Outputs[1] = {0};
 
-        wire_id Inputs [2] = {A, B};
-        wire_id Outputs[1] = {C};
+        AddWires(Inputs,  ArrayCount(Inputs));
+        AddWires(Outputs, ArrayCount(Outputs));
 
         #define DoBinaryTest(Name) \
-            { \
-                usize SoFar = Print(Str("Testing " #Name "... ")); \
-                \
-                if (SoFar < TestResultPrintPadding) \
-                    PrintRepeat(Str(" "), TestResultPrintPadding - SoFar); \
-                \
-                ResetGates(); \
-                Name(A, B, C); \
-                \
-                if (VerifyTruthTable(Truth##Name, 4, Inputs, 2, Outputs, 1)) \
-                { \
-                    Println(Str("SUCCESS")); \
-                } \
-                else \
-                { \
-                    Println(Str("FAILED")); \
-                } \
-            }
+            ResetGates(); \
+            Name(Inputs[0], Inputs[1], Outputs[0]); \
+            \
+            OutputTestResult(Str(#Name), VerifyTruthTable(Truth##Name, 4, Inputs, 2, Outputs, 1));
 
         DoBinaryTest(NAND)
         DoBinaryTest(AND)
@@ -369,75 +369,55 @@ local void TestLogicGates(void)
     {
         ResetCircuit();
 
-        wire_id A = AddWire();
-        wire_id B = AddWire();
+        wire_id Inputs[1]  = {AddWire()};
+        wire_id Outputs[1] = {AddWire()};
 
-        wire_id Inputs[1]  = {A};
-        wire_id Outputs[1] = {B};
+        NOT(Inputs[0], Outputs[0]);
 
-        usize SoFar = Print(Str("Testing NOT... "));
-
-        if (SoFar < TestResultPrintPadding)
-            PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
-
-        NOT(A, B);
-
-        if (VerifyTruthTable(TruthNOT, 2, Inputs, 1, Outputs, 1))
-        {
-            Println(Str("SUCCESS"));
-        }
-        else
-        {
-            Println(Str("FAILED"));
-        }
+        OutputTestResult(Str("NOT"), VerifyTruthTable(TruthNOT, 2, Inputs, 1, Outputs, 1));
     }
 }
 
 local void TestHalfAdder1(void)
 {
-    usize SoFar = Print(Str("Testing HalfAdder1... "));
-
-    if (SoFar < TestResultPrintPadding)
-        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
-
     ResetCircuit();
+
+    wire TruthHalfAdder[4 * 4] =
+    {
+        0, 0,    0, 0,
+        0, 1,    1, 0,
+        1, 0,    1, 0,
+        1, 1,    0, 1,
+    };
 
     wire_id A     = AddWire();
     wire_id B     = AddWire();
     wire_id Sum   = AddWire();
     wire_id Carry = AddWire();
 
+    wire_id Inputs[2]  = {A, B};
+    wire_id Outputs[2] = {Sum, Carry};
+
     HalfAdder1(A, B, Sum, Carry);
 
-    b32 Successful = true;
-
-    for (u32 State = 0; (State <= 3) & (Successful); State++)
-    {
-        SetWire(A, (State >> 1) & 1);
-        SetWire(B, (State >> 0) & 1);
-
-        SimulateCircuit();
-
-        u32 Desired = GetWire(A) + GetWire(B);
-
-        wire DesiredSum   = (wire)((Desired >> 0) & 1);
-        wire DesiredCarry = (wire)((Desired >> 1) & 1);
-
-        Successful &= (GetWire(Sum)   == DesiredSum);
-        Successful &= (GetWire(Carry) == DesiredCarry);
-    }
-
-    Println(Successful ? Str("SUCCESS") : Str("FAILED"));
+    OutputTestResult(Str("HalfAdder1"), VerifyTruthTable(TruthHalfAdder, 4, Inputs, 2, Outputs, 2));
 }
 
 local void TestFullAdder1(void)
 {
-    usize SoFar = Print(Str("Testing FullAdder1... "));
-
-    if (SoFar < TestResultPrintPadding)
-        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
-
     ResetCircuit();
+
+    wire TruthHalfAdder[5 * 8] =
+    {
+        0, 0, 0,    0, 0,
+        0, 0, 1,    1, 0,
+        0, 1, 0,    1, 0,
+        0, 1, 1,    0, 1,
+        1, 0, 0,    1, 0,
+        1, 0, 1,    0, 1,
+        1, 1, 0,    0, 1,
+        1, 1, 1,    1, 1,
+    };
 
     wire_id A     = AddWire();
     wire_id B     = AddWire();
@@ -445,121 +425,10 @@ local void TestFullAdder1(void)
     wire_id Sum   = AddWire();
     wire_id Carry = AddWire();
 
+    wire_id Inputs[3]  = {A, B, C};
+    wire_id Outputs[2] = {Sum, Carry};
+
     FullAdder1(A, B, C, Sum, Carry);
 
-    b32 Successful = true;
-
-    for (u32 State = 0; (State <= 7) & (Successful); State++)
-    {
-        SetWire(A, (State >> 2) & 1);
-        SetWire(B, (State >> 1) & 1);
-        SetWire(C, (State >> 0) & 1);
-
-        SimulateCircuit();
-
-        u32 Desired = GetWire(A) + GetWire(B) + GetWire(C);
-
-        wire DesiredSum   = (wire)((Desired >> 0) & 1);
-        wire DesiredCarry = (wire)((Desired >> 1) & 1);
-
-        Successful &= (GetWire(Sum)   == DesiredSum);
-        Successful &= (GetWire(Carry) == DesiredCarry);
-    }
-
-    Println(Successful ? Str("SUCCESS") : Str("FAILED"));
-}
-
-local void TestHalfAdder(void)
-{
-    usize SoFar = Print(Str("Testing HalfAdder... "));
-
-    if (SoFar < TestResultPrintPadding)
-        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
-
-    ResetCircuit();
-
-    wire_id Sum[8]               = {0};
-    wire_id A  [ArrayCount(Sum)] = {0};
-    wire_id B  [ArrayCount(Sum)] = {0};
-
-    u32 BitCount = ArrayCount(Sum);
-
-    AddWires(A,   BitCount);
-    AddWires(B,   BitCount);
-    AddWires(Sum, BitCount);
-
-    wire_id Carry = AddWire();
-
-    HalfAdder(BitCount, A, B, Sum, Carry);
-
-    b32 Successful = true;
-
-    u64 SumMask  = (1ull << BitCount) - 1;
-    u64 MaxState = (1ull << BitCount*2) - 1;
-
-    for (u32 State = 0; (State <= MaxState) & (Successful); State++)
-    {
-        SetWires(A, BitCount, SumMask & (State >> BitCount*0));
-        SetWires(B, BitCount, SumMask & (State >> BitCount*1));
-
-        SimulateCircuit();
-
-        u64 Desired      = GetWires(A, BitCount) + GetWires(B, BitCount);
-        u64 DesiredSum   = Desired  & SumMask;
-        u64 DesiredCarry = (Desired >> BitCount) & 1;
-
-        Successful &= (GetWires(Sum, BitCount) == DesiredSum);
-        Successful &= (GetWire(Carry) == DesiredCarry);
-    }
-
-    Println(Successful ? Str("SUCCESS") : Str("FAILED"));
-}
-
-local void TestFullAdder(void)
-{
-    usize SoFar = Print(Str("Testing FullAdder... "));
-
-    if (SoFar < TestResultPrintPadding)
-        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
-
-    ResetCircuit();
-
-    wire_id Sum[8]               = {0};
-    wire_id A  [ArrayCount(Sum)] = {0};
-    wire_id B  [ArrayCount(Sum)] = {0};
-
-    u32 BitCount = ArrayCount(Sum);
-
-    AddWires(A,   BitCount);
-    AddWires(B,   BitCount);
-    AddWires(Sum, BitCount);
-
-    wire_id C     = AddWire();
-    wire_id Carry = AddWire();
-
-    FullAdder(BitCount, A, B, C, Sum, Carry);
-
-    b32 Successful = true;
-
-    u64 SumMask  = (1ull << BitCount) - 1;
-    u64 MaxState = (1ull << BitCount*2);
-
-    for (u32 State = 0; (State <= MaxState) & (Successful); State++)
-    {
-        SetWires(A, BitCount, SumMask & (State >> BitCount*0));
-        SetWires(B, BitCount, SumMask & (State >> BitCount*1));
-
-        SetWire(C, (State >> BitCount*2) & 1);
-
-        SimulateCircuit();
-
-        u64 Desired      = GetWires(A, BitCount) + GetWires(B, BitCount) + GetWire(C);
-        u64 DesiredSum   = Desired  & SumMask;
-        u64 DesiredCarry = (Desired >> BitCount) & 1;
-
-        Successful &= (GetWires(Sum, BitCount) == DesiredSum);
-        Successful &= (GetWire(Carry) == DesiredCarry);
-    }
-
-    Println(Successful ? Str("SUCCESS") : Str("FAILED"));
+    OutputTestResult(Str("FullAdder1"), VerifyTruthTable(TruthHalfAdder, 8, Inputs, 3, Outputs, 2));
 }
