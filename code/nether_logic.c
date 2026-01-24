@@ -382,7 +382,7 @@ local void TestHalfAdder1(void)
 {
     ResetCircuit();
 
-    wire TruthHalfAdder[4 * 4] =
+    persist wire TruthHalfAdder[4 * 4] =
     {
         0, 0,    0, 0,
         0, 1,    1, 0,
@@ -407,7 +407,7 @@ local void TestFullAdder1(void)
 {
     ResetCircuit();
 
-    wire TruthHalfAdder[5 * 8] =
+    persist wire TruthHalfAdder[5 * 8] =
     {
         0, 0, 0,    0, 0,
         0, 0, 1,    1, 0,
