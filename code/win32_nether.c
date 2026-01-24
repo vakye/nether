@@ -4,6 +4,9 @@
 
 #include "nether_platform.h"
 
+#include "nether_logic.h"
+#include "nether_logic.c"
+
 #include "nether.h"
 #include "nether.c"
 
