@@ -38,3 +38,9 @@ local usize Println(string Message)
 
     return (Result);
 }
+
+local usize PrintNewLine(void)
+{
+    usize Result = Print(Str("\n"));
+    return (Result);
+}

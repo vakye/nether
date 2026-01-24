@@ -11,6 +11,8 @@
 #define CTAssert(Expression) _Static_assert(Expression, "Compile-time assertion failed")
 #define Assert(Expression) if (!(Expression)) *(int*)0 = 0
 
+#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+
 #define Minimum(A, B) ((A) < (B) ? (A) : (B))
 #define Maximum(A, B) ((A) > (B) ? (A) : (B))
 

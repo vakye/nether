@@ -4,6 +4,9 @@
 
 #include "nether_platform.h"
 
+#include "nether.h"
+#include "nether.c"
+
 #include "win32_nether.h"
 #include "win32_platform.c"
 
@@ -24,7 +27,7 @@ void WinMainCRTStartup()
 {
     Win32SetupConsole();
 
-    Println(Str("Hello, world!"));
+    s32 ExitCode = Main();
 
-    ExitProcess(0);
+    ExitProcess(ExitCode);
 }
