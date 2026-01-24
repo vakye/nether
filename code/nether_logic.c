@@ -407,7 +407,7 @@ local void TestFullAdder1(void)
 {
     ResetCircuit();
 
-    persist wire TruthHalfAdder[5 * 8] =
+    persist wire TruthFullAdder[5 * 8] =
     {
         0, 0, 0,    0, 0,
         0, 0, 1,    1, 0,
@@ -430,5 +430,5 @@ local void TestFullAdder1(void)
 
     FullAdder1(A, B, C, Sum, Carry);
 
-    OutputTestResult(Str("FullAdder1"), VerifyTruthTable(TruthHalfAdder, 8, Inputs, 3, Outputs, 2));
+    OutputTestResult(Str("FullAdder1"), VerifyTruthTable(TruthFullAdder, 8, Inputs, 3, Outputs, 2));
 }
