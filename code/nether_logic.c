@@ -17,6 +17,22 @@ local u32 GateCount = 0;
 
 // NOTE(vak): Circuit
 
+local void RandomizeWireState(void)
+{
+    u32 State = GetWallClock() & 0xFFFFFFFF;
+
+    for (u32 Index = 0; Index < WireCount; Index++)
+    {
+        State ^= (State << 13);
+        State ^= (State >> 17);
+        State ^= (State << 5);
+
+        wire Bit = (State & 1);
+
+        Wires[Index] = Bit;
+    }
+}
+
 local void ResetCircuit(void)
 {
     WireCount = 0;
@@ -38,7 +54,7 @@ local void SimulateCircuit(void)
         wire_id B   = Gate->B;
         wire_id Out = Gate->Out;
 
-        SetWire(Out, !(GetWire(A) && GetWire(B)));
+        Wires[Out] = !(Wires[A] & Wires[B]);
     }
 }
 
@@ -48,6 +64,12 @@ local void SimulateClockPulse(wire_id Clock, u32 PulseTime)
 
     for (u32 Time = 0; Time < PulseTime; Time++)
         SimulateCircuit();
+}
+
+local void SimulateClockCycle(wire_id Clock, u32 PulseTime)
+{
+    SimulateClockPulse(Clock, PulseTime);
+    SimulateClockPulse(Clock, PulseTime);
 }
 
 // NOTE(vak): Wires
@@ -125,6 +147,10 @@ local b32 ExpectWires(wire_id* IDs, u32 Count, u64 ExpectedBits)
 
 local void NAND(wire_id A, wire_id B, wire_id Out)
 {
+    Assert(A < WireCount);
+    Assert(B < WireCount);
+    Assert(Out < WireCount);
+
     Assert(GateCount < ArrayCount(Gates));
 
     nand* Gate = Gates + GateCount++;
@@ -279,6 +305,19 @@ local void DLatch(wire_id Data, wire_id Enable, wire_id Out, wire_id NotOut)
     NAND(B, Out, NotOut);
 }
 
+local void DFlipFlop(wire_id Data, wire_id Clock, wire_id Out, wire_id NotOut)
+{
+    wire_id NotClock = AddWire();
+
+    wire_id A    = AddWire();
+    wire_id NotA = AddWire();
+
+    NOT(Clock, NotClock);
+
+    DLatch(Data, Clock, A, NotA);
+    DLatch(A, NotClock, Out, NotOut);
+}
+
 // NOTE(vak): Tests
 
 local void OutputTestResult(string Name, b32 Successful)
@@ -302,6 +341,8 @@ local b32 VerifyTruthTable(
     wire_id* Outputs, u32 OutputCount
 )
 {
+    RandomizeWireState();
+
     u32 ColumnCount = InputCount + OutputCount;
 
     for (u32 RowIndex = 0; RowIndex < RowCount; RowIndex++)
@@ -475,53 +516,45 @@ local void TestFullAdder1(void)
 
 local void TestHalfAdder(void)
 {
-    persist u8 TestTable[] =
-    {
-    // NOTE(vak):
-    //   A     B       Sum   Carry
-        0x00, 0x00,    0x00, 0,
-        0x10, 0x01,    0x11, 0,
-        0xFF, 0x01,    0x00, 1,
-        0xFF, 0xFF,    0xFE, 1,
-        0x33, 0x34,    0x67, 0,
-        0x11, 0x22,    0x33, 0,
-        0x33, 0x44,    0x77, 0,
-        0x55, 0x22,    0x77, 0,
-        0x90, 0x3A,    0xCA, 0,
-        0x01, 0x02,    0x03, 0,
-        0xAA, 0xBB,    0x65, 1,
-    };
-
     b32 Successful = true;
 
     ResetCircuit();
 
-    wire_id A[8]   = {0};
-    wire_id B[8]   = {0};
-    wire_id Sum[8] = {0};
+    u32 BitCounts[] = {6, 8, 14, 16, 20, 27, 32};
 
-    AddWires(A, 8);
-    AddWires(B, 8);
-    AddWires(Sum, 8);
+    wire_id A[32]   = {0};
+    wire_id B[32]   = {0};
+    wire_id Sum[32] = {0};
 
-    wire_id Carry = AddWire();
-
-    HalfAdder(8, A, B, Sum, Carry);
-
-    u32 TestCount = ArrayCount(TestTable) / 4;
-
-    for (u32 TestIndex = 0; TestIndex < TestCount; TestIndex++)
+    for (u32 Index = 0; Index < ArrayCount(BitCounts); Index++)
     {
-        u8* TestInputs  = TestTable  + (TestIndex * 4);
-        u8* TestOutputs = TestInputs + 2;
+        u32 BitCount = BitCounts[Index];
 
-        SetWires(A, 8, TestInputs[0]);
-        SetWires(B, 8, TestInputs[1]);
+        ResetCircuit();
 
-        SimulateCircuit();
+        AddWires(A,   BitCount);
+        AddWires(B,   BitCount);
+        AddWires(Sum, BitCount);
 
-        Successful &= ExpectWires(Sum, 8, TestOutputs[0]);
-        Successful &= ExpectWire (Carry,  TestOutputs[1]);
+        wire_id Carry = AddWire();
+
+        HalfAdder(BitCount, A, B, Sum, Carry);
+
+        u64 Mask = (1ull << BitCount) - 1;
+
+        for (u32 TestIndex = 0; TestIndex < 1024; TestIndex++)
+        {
+            RandomizeWireState();
+            SimulateCircuit();
+
+            u64 Computed = GetWires(A, BitCount) + GetWires(B, BitCount);
+
+            u64  ExpectedSum = Computed & Mask;
+            wire ExpectedCarry = (Computed >> BitCount) & 1;
+
+            Successful &= ExpectWires(Sum, BitCount, ExpectedSum);
+            Successful &= ExpectWire (Carry, ExpectedCarry);
+        }
     }
 
     OutputTestResult(Str("HalfAdder"), Successful);
@@ -529,61 +562,46 @@ local void TestHalfAdder(void)
 
 local void TestFullAdder(void)
 {
-    persist u8 TestTable[] =
-    {
-    // NOTE(vak):
-    //   A     B    C     Sum   Carry
-        0x00, 0x00, 0,    0x00, 0,
-        0x00, 0x00, 1,    0x01, 0,
-        0x10, 0x01, 0,    0x11, 0,
-        0x10, 0x01, 1,    0x12, 0,
-        0xFF, 0x01, 0,    0x00, 1,
-        0xFF, 0x01, 1,    0x01, 1,
-        0xFF, 0xFF, 0,    0xFE, 1,
-        0xFF, 0xFF, 1,    0xFF, 1,
-        0x33, 0x34, 0,    0x67, 0,
-        0x33, 0x33, 1,    0x67, 0,
-        0x11, 0x22, 0,    0x33, 0,
-        0x33, 0x44, 0,    0x77, 0,
-        0x55, 0x22, 1,    0x78, 0,
-        0x90, 0x3A, 0,    0xCA, 0,
-        0x90, 0x30, 1,    0xC1, 0,
-        0x01, 0x02, 1,    0x04, 0,
-        0xAA, 0xBB, 0,    0x65, 1,
-    };
-
     b32 Successful = true;
 
     ResetCircuit();
 
-    wire_id A[8]   = {0};
-    wire_id B[8]   = {0};
-    wire_id Sum[8] = {0};
+    u32 BitCounts[] = {6, 8, 14, 16, 20, 27, 32};
 
-    AddWires(A, 8);
-    AddWires(B, 8);
-    AddWires(Sum, 8);
+    wire_id A[32]   = {0};
+    wire_id B[32]   = {0};
+    wire_id Sum[32] = {0};
 
-    wire_id C     = AddWire();
-    wire_id Carry = AddWire();
-
-    FullAdder(8, A, B, C, Sum, Carry);
-
-    u32 TestCount = ArrayCount(TestTable) / 5;
-
-    for (u32 TestIndex = 0; TestIndex < TestCount; TestIndex++)
+    for (u32 Index = 0; Index < ArrayCount(BitCounts); Index++)
     {
-        u8* TestInputs  = TestTable  + (TestIndex * 5);
-        u8* TestOutputs = TestInputs + 3;
+        u32 BitCount = BitCounts[Index];
 
-        SetWires(A, 8, TestInputs[0]);
-        SetWires(B, 8, TestInputs[1]);
-        SetWire (C,    TestInputs[2]);
+        ResetCircuit();
 
-        SimulateCircuit();
+        AddWires(A,   BitCount);
+        AddWires(B,   BitCount);
+        AddWires(Sum, BitCount);
 
-        Successful &= ExpectWires(Sum, 8, TestOutputs[0]);
-        Successful &= ExpectWire (Carry,  TestOutputs[1]);
+        wire_id C     = AddWire();
+        wire_id Carry = AddWire();
+
+        FullAdder(BitCount, A, B, C, Sum, Carry);
+
+        u64 Mask = (1ull << BitCount) - 1;
+
+        for (u32 TestIndex = 0; TestIndex < 1024; TestIndex++)
+        {
+            RandomizeWireState();
+            SimulateCircuit();
+
+            u64 Computed = GetWires(A, BitCount) + GetWires(B, BitCount) + GetWire(C);
+
+            u64  ExpectedSum = Computed & Mask;
+            wire ExpectedCarry = (Computed >> BitCount) & 1;
+
+            Successful &= ExpectWires(Sum, BitCount, ExpectedSum);
+            Successful &= ExpectWire (Carry, ExpectedCarry);
+        }
     }
 
     OutputTestResult(Str("FullAdder"), Successful);
@@ -603,6 +621,9 @@ local void TestDLatch(void)
     DLatch(Data, Clock, Out, NotOut);
 
     u32 PulseTime = 2;
+
+    RandomizeWireState();
+    SimulateClockCycle(Clock, PulseTime);
 
     SetWire(Clock, 0);
 
@@ -637,4 +658,55 @@ local void TestDLatch(void)
     }
 
     OutputTestResult(Str("DLatch"), Successful);
+}
+
+local void TestDFlipFlop(void)
+{
+    ResetCircuit();
+
+    b32 Successful = true;
+
+    wire_id Data   = AddWire();
+    wire_id Clock  = AddWire();
+    wire_id Out    = AddWire();
+    wire_id NotOut = AddWire();
+
+    DFlipFlop(Data, Clock, Out, NotOut);
+
+    u32 PulseTime = 2;
+
+    RandomizeWireState();
+    SimulateClockCycle(Clock, PulseTime);
+
+    SetWire(Clock, 0);
+
+    {
+        SetWire(Data, 1);
+        SimulateClockCycle(Clock, PulseTime);
+
+        Successful &= ExpectWire(Out, 1);
+        Successful &= ExpectWire(NotOut, 0);
+
+        SetWire(Data, 0);
+        SimulateClockPulse(Clock, PulseTime);
+
+        Successful &= ExpectWire(Out, 1);
+        Successful &= ExpectWire(NotOut, 0);
+
+        SetWire(Data, 1);
+        SimulateClockPulse(Clock, PulseTime);
+
+        Successful &= ExpectWire(Out, 0);
+        Successful &= ExpectWire(NotOut, 1);
+
+        for (u32 Index = 0; Index < 15; Index++)
+        {
+            SimulateClockCycle(Clock, PulseTime);
+
+            Successful &= ExpectWire(Out, 1);
+            Successful &= ExpectWire(NotOut, 0);
+        }
+    }
+
+    OutputTestResult(Str("DFlipFlop"), Successful);
 }

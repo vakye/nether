@@ -1,4 +1,13 @@
 
+local usize GetWallClock(void)
+{
+    LARGE_INTEGER Counter = {0};
+    QueryPerformanceCounter(&Counter);
+
+    usize Result = Counter.QuadPart;
+    return (Result);
+}
+
 local usize Print(string Message)
 {
     usize Result = 0;

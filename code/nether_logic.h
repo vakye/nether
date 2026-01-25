@@ -6,10 +6,14 @@ typedef u32 wire_id;
 
 // NOTE(vak): Circuit
 
+local void RandomizeWireState(void);
+
 local void ResetCircuit      (void);
 local void ResetGate         (void);
 local void SimulateCircuit   (void);
+
 local void SimulateClockPulse(wire_id Clock, u32 PulseTime);
+local void SimulateClockCycle(wire_id Clock, u32 PulseTime);
 
 // NOTE(vak): Wires
 
@@ -47,6 +51,12 @@ local void FullAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id C, wire_id* S
 // Minimum PulseTime: 2
 local void DLatch(wire_id Data, wire_id Enable, wire_id Out, wire_id NotOut);
 
+// NOTE(vak):
+// Stores the 'Data' bit after a single clock cycle.
+// Minimum PulseTime: 2
+// Minimum Cycles:    1
+local void DFlipFlop(wire_id Data, wire_id Clock, wire_id Out, wire_id NotOut);
+
 // NOTE(vak): Testing
 
 #define TestResultPrintPadding (20)
@@ -60,9 +70,11 @@ local b32 VerifyTruthTable(
 local void OutputTestResult(string Name, b32 Successful);
 
 local void TestLogicGates(void);
+
 local void TestHalfAdder1(void);
 local void TestFullAdder1(void);
 local void TestHalfAdder(void);
 local void TestFullAdder(void);
 
 local void TestDLatch(void);
+local void TestDFlipFlop(void);
