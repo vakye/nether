@@ -1,0 +1,94 @@
+
+------------------------------------------------------------
+
+sketch.txt - A place for writing down ideas.
+
+------------------------------------------------------------
+
+Registers:
+
+There are 32 registers available, ranging from r0 to r31.
+
+This makes full usage of the 5 bits available for register
+encoding inside of the [Op Code Byte].
+
+------------------------------------------------------------
+
+Instruction layout:
+
+The instruction layout itself is relatively simple. Each
+instruction is encoded as a single op code byte followed
+immediately by an operand byte. This means that each
+instruction takes up 2 bytes.
+
+[Op Code Byte] [Operand Byte]
+
+The layout for the op code byte itself is as follows:
+
+0bXXXXX_YYY
+    -> First 3 bits (YYY)   : Op code
+    -> Next  5 bits (XXXXX) : First operand (always a register)
+
++----------------------------------------+
+|     Instruction    |       Effect      |
++----------------------------------------+
+| LOAD  A, Imm8      |  A = Imm8         |
+| LOAD  A, B         |  A = B            |
+| LOAD  A, [Memory8] |  A = RAM[Memory8] |
+| STORE A, [Memory8] |  RAM[Memory8] = A |
+| ADD   A, B         |  A = A + B        |
+| SUB   A, B         |  A = A - B        |
+| ADD   A, Imm8      |  A = A + Imm8     |
+| SUB   A, Imm8      |  A = A - Imm8     |
++----------------------------------------+
+
++--------------------------------------------------------------------------------------------+
+| Op code byte |  Encoded instruction  |     First operand      |       Second operand       |
++--------------------------------------------------------------------------------------------+
+|  0bXXXXX000  |  LOAD  A, Imm8        | A = Registers[0bXXXXX] | Imm8      = [Operand Byte] |
+|  0bXXXXX001  |  LOAD  A, B           | A = Registers[0bXXXXX] | B         = [Operand Byte] |
+|  0bXXXXX010  |  LOAD  A, [Memory8]   | A = Registers[0bXXXXX] | [Memory8] = [Operand Byte] |
+|  0bXXXXX011  |  STORE A, [Memory8]   | A = Registers[0bXXXXX] | [Memory8] = [Operand Byte] |
+|  0bXXXXX100  |  ADD   A, B           | A = Registers[0bXXXXX] | B         = [Operand Byte] |
+|  0bXXXXX101  |  SUB   A, B           | A = Registers[0bXXXXX] | B         = [Operand Byte] |
+|  0bXXXXX110  |  ADD   A, Imm8        | A = Registers[0bXXXXX] | Imm8      = [Operand Byte] |
+|  0bXXXXX111  |  SUB   A, Imm8        | A = Registers[0bXXXXX] | Imm8      = [Operand Byte] |
++--------------------------------------------------------------------------------------------+
+
+The op code map above is assigned in such a way that the decoder
+can quickly and easily convert them into control flags for the
+ALU or the Load/Store unit.
+
+3rd bit:
+    -> 1 for arithmetic operation
+    -> 0 for memory operation
+
+2nd bit:
+    + Arithmetic operation:
+        -> 1 if the second operand is an immediate
+        -> 0 if the second operand is a register
+
+    + Memory operation:
+        -> 1 if the second operand is a memory address
+        -> 0 if the second operand is a Immediate/Register
+
+1st bit:
+    + Arithmetic operation:
+        -> 1 for subtraction
+        -> 0 for addition
+
+    + Memory operation
+        -> If second operand is a memory address (2nd bit is 1)
+            -> 1 for store operation
+            -> 0 for load operation
+
+        -> If second operand is a Immediate/Register (2nd bit is 0)
+            -> 1 for Immediate
+            -> 0 for Register
+
+Overall, the op code bits can be thought of as:
+    -> Bit 3: Determines whether it is an arithmetic or a memory operation
+    -> Bit 2: Determines the type of the second operand (Immediate, Register, Memory)
+    -> Bit 1: Determines the operation (Addition, Subtraction, Load, Store)
+
+------------------------------------------------------------
