@@ -839,49 +839,54 @@ local void TestRegister(void)
 {
     b32 Successful = true;
 
-    ResetCircuit();
+    u32 BitCounts[] = {1, 2, 3, 4, 7, 8, 13, 16, 20, 27, 32};
 
-    u32 BitCount = 8;
+    wire_id Data[32] = {0};
+    wire_id Out[32]  = {0};
 
-    wire_id Data[8] = {0};
-    wire_id Out[8]  = {0};
-
-    AddWires(Data, 8);
-    AddWires(Out,  8);
-
-    wire_id Clock       = AddWire();
-    wire_id WriteEnable = AddWire();
-
-    Register(8, Data, WriteEnable, Clock, Out);
-
-    u32 PulseTime = 2 + (GetWallClock() & 15);
-
-    for (u32 Index = 0; Index < 512; Index++)
+    for (u32 Index = 0; Index < ArrayCount(BitCounts); Index++)
     {
-        RandomizeWireState();
+        u32 BitCount = BitCounts[Index];
 
-        RandomWires(Data, 8);
-        SetWire(WriteEnable, 1);
+        ResetCircuit();
 
-        u64 Expected = GetWires(Data, 8);
+        AddWires(Data, BitCount);
+        AddWires(Out,  BitCount);
 
-        u32 WriteCycles = 2 + (GetWallClock() & 7);
-        for (u32 Cycle = 0; Cycle < WriteCycles; Cycle++)
+        wire_id Clock       = AddWire();
+        wire_id WriteEnable = AddWire();
+
+        Register(BitCount, Data, WriteEnable, Clock, Out);
+
+        u32 PulseTime = 2 + (GetWallClock() & 7);
+
+        for (u32 TestIndex = 0; TestIndex < 128; TestIndex++)
         {
-            SimulateClockCycle(Clock, PulseTime);
-        }
+            RandomizeWireState();
 
-        Successful &= ExpectWires(Out, 8, Expected);
+            RandomWires(Data, BitCount);
+            SetWire(WriteEnable, 1);
 
-        SetWire(WriteEnable, 0);
+            u64 Expected = GetWires(Data, BitCount);
 
-        u32 ReadCycles = 1 + (GetWallClock() & 63);
-        for (u32 Cycle = 0; Cycle < ReadCycles; Cycle++)
-        {
-            RandomWires(Data, 8);
-            SimulateClockCycle(Clock, PulseTime);
+            u32 WriteCycles = 2 + (GetWallClock() & 7);
+            for (u32 Cycle = 0; Cycle < WriteCycles; Cycle++)
+            {
+                SimulateClockCycle(Clock, PulseTime);
+            }
 
-            Successful &= ExpectWires(Out, 8, Expected);
+            Successful &= ExpectWires(Out, BitCount, Expected);
+
+            SetWire(WriteEnable, 0);
+
+            u32 ReadCycles = 1 + (GetWallClock() & 7);
+            for (u32 Cycle = 0; Cycle < ReadCycles; Cycle++)
+            {
+                RandomWires(Data, 8);
+                SimulateClockCycle(Clock, PulseTime);
+
+                Successful &= ExpectWires(Out, BitCount, Expected);
+            }
         }
     }
 

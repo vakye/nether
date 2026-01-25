@@ -54,18 +54,18 @@ local void FullAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id C, wire_id* S
 
 // NOTE(vak):
 // Stores the 'Data' bit when 'Enable' is high.
-// Minimum PulseTime: 2
+// Minimum pulse time: 2
 local void DLatch(wire_id Data, wire_id Enable, wire_id Out, wire_id NotOut);
 
 // NOTE(vak):
 // Stores the 'Data' bit after a single clock cycle.
-// Minimum PulseTime: 2
-// Minimum cycles:    1
+// Minimum pulse time:  2
+// Minimum latch cycle: 1
 local void DFlipFlop(wire_id Data, wire_id Clock, wire_id Out, wire_id NotOut);
 
 // NOTE(vak):
-// Stores the 'Data' bit after a single clock cycle when 'WriteEnable' is high.
-// Minimum PulseTime:    2
+// Stores the 'Data' bit after two clock cycles when 'WriteEnable' is high.
+// Minimum pulse time:   2
 // Minimum write cycles: 2
 local void Register(u32 BitCount, wire_id* Data, wire_id WriteEnable, wire_id Clock, wire_id* Out);
 
