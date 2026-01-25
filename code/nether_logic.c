@@ -457,7 +457,7 @@ local void ALU(wires A, wires B, wire_id SubtractOp, wires Out, wire_id Carry)
 {
     u32 BitCount = Out.Count;
 
-    Assert(BitCount >= 2); // NOTE(vak): Need atleast 2 bits since one bit is used for the sign.
+    Assert(BitCount >= 1);
     Assert(A.Count == BitCount);
     Assert(B.Count == BitCount);
 
@@ -952,7 +952,7 @@ local void TestALU(void)
 
     for (u32 Index = 0; Index < 10; Index++)
     {
-        u32 BitCount = 2 + (GetWallClock() & 62);
+        u32 BitCount = 1 + (GetWallClock() & 63);
 
         ResetCircuit();
 
