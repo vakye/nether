@@ -29,7 +29,14 @@ local s32 Main(void)
     {
         TestDLatch();
         TestDFlipFlop();
+    }
+
+    PrintNewLine();
+
+    // NOTE(vak): Central components
+    {
         TestRegister();
+        TestALU();
     }
 
     return (0);
