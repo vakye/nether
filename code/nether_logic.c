@@ -929,7 +929,6 @@ local void TestRegister(void)
             u64 Debug = GetWires(Out);
 
             Successful &= ExpectWires(Out, Expected);
-            if (!Successful) __debugbreak();
 
             SetWire(WriteEnable, 0);
 
@@ -940,8 +939,6 @@ local void TestRegister(void)
                 SimulateClockCycle(Clock, PulseTime);
 
                 Successful &= ExpectWires(Out, Expected);
-
-                if (!Successful) __debugbreak();
             }
         }
     }
@@ -984,7 +981,7 @@ local void TestALU(void)
             else
                 Computed = ValueA + ValueB;
 
-            u64  ExpectedOut = Computed & Mask;
+            u64  ExpectedOut   = Computed & Mask;
             wire ExpectedCarry = (GetWire(SubtractOp)) ? (ExpectedOut > ValueA) : (ExpectedOut < ValueA);
 
             Successful &= ExpectWires(Out,   ExpectedOut);
