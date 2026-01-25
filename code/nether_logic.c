@@ -42,6 +42,14 @@ local void SimulateCircuit(void)
     }
 }
 
+local void SimulateClockPulse(wire_id Clock, u32 PulseTime)
+{
+    SetWire(Clock, !GetWire(Clock));
+
+    for (u32 Time = 0; Time < PulseTime; Time++)
+        SimulateCircuit();
+}
+
 // NOTE(vak): Wires
 
 local wire_id AddWire(void)
@@ -65,6 +73,12 @@ local void SetWire(wire_id ID, wire Bit)
     Assert(ID < WireCount);
 
     Wires[ID] = (Bit & 1);
+}
+
+local b32 ExpectWire(wire_id ID, wire ExpectedBit)
+{
+    b32 Result = GetWire(ID) == ExpectedBit;
+    return (Result);
 }
 
 local void AddWires(wire_id* IDs, u32 Count)
@@ -97,6 +111,14 @@ local void SetWires(wire_id* IDs, u32 Count, u64 Bits)
 
     for (u32 Index = 0; Index < Count; Index++)
         SetWire(IDs[Index], (Bits >> Index) & 1);
+}
+
+local b32 ExpectWires(wire_id* IDs, u32 Count, u64 ExpectedBits)
+{
+    u64 Mask = (1ull << Count) - 1;
+    b32 Result = GetWires(IDs, Count) == (ExpectedBits & Mask);
+
+    return (Result);
 }
 
 // NOTE(vak): Logic gates
@@ -239,6 +261,24 @@ local void FullAdder(u32 BitCount, wire_id* A, wire_id* B, wire_id C, wire_id* S
     }
 }
 
+// NOTE(vak): Latches
+
+local void DLatch(wire_id Data, wire_id Enable, wire_id Out, wire_id NotOut)
+{
+    wire_id NotData = AddWire();
+
+    wire_id A = AddWire();
+    wire_id B = AddWire();
+
+    NOT (Data, NotData);
+
+    NAND(   Data, Enable, A);
+    NAND(NotData, Enable, B);
+
+    NAND(A, NotOut, Out);
+    NAND(B, Out, NotOut);
+}
+
 // NOTE(vak): Tests
 
 local void OutputTestResult(string Name, b32 Successful)
@@ -280,7 +320,7 @@ local b32 VerifyTruthTable(
 
         for (u32 Index = 0; Index < OutputCount; Index++)
         {
-            if (GetWire(Outputs[Index]) != OutputValues[Index])
+            if (!ExpectWire(Outputs[Index], OutputValues[Index]))
             {
                 goto Failed;
                 break;
@@ -431,4 +471,170 @@ local void TestFullAdder1(void)
     FullAdder1(A, B, C, Sum, Carry);
 
     OutputTestResult(Str("FullAdder1"), VerifyTruthTable(TruthFullAdder, 8, Inputs, 3, Outputs, 2));
+}
+
+local void TestHalfAdder(void)
+{
+    persist u8 TestTable[] =
+    {
+    // NOTE(vak):
+    //   A     B       Sum   Carry
+        0x00, 0x00,    0x00, 0,
+        0x10, 0x01,    0x11, 0,
+        0xFF, 0x01,    0x00, 1,
+        0xFF, 0xFF,    0xFE, 1,
+        0x33, 0x34,    0x67, 0,
+        0x11, 0x22,    0x33, 0,
+        0x33, 0x44,    0x77, 0,
+        0x55, 0x22,    0x77, 0,
+        0x90, 0x3A,    0xCA, 0,
+        0x01, 0x02,    0x03, 0,
+        0xAA, 0xBB,    0x65, 1,
+    };
+
+    b32 Successful = true;
+
+    ResetCircuit();
+
+    wire_id A[8]   = {0};
+    wire_id B[8]   = {0};
+    wire_id Sum[8] = {0};
+
+    AddWires(A, 8);
+    AddWires(B, 8);
+    AddWires(Sum, 8);
+
+    wire_id Carry = AddWire();
+
+    HalfAdder(8, A, B, Sum, Carry);
+
+    u32 TestCount = ArrayCount(TestTable) / 4;
+
+    for (u32 TestIndex = 0; TestIndex < TestCount; TestIndex++)
+    {
+        u8* TestInputs  = TestTable  + (TestIndex * 4);
+        u8* TestOutputs = TestInputs + 2;
+
+        SetWires(A, 8, TestInputs[0]);
+        SetWires(B, 8, TestInputs[1]);
+
+        SimulateCircuit();
+
+        Successful &= ExpectWires(Sum, 8, TestOutputs[0]);
+        Successful &= ExpectWire (Carry,  TestOutputs[1]);
+    }
+
+    OutputTestResult(Str("HalfAdder"), Successful);
+}
+
+local void TestFullAdder(void)
+{
+    persist u8 TestTable[] =
+    {
+    // NOTE(vak):
+    //   A     B    C     Sum   Carry
+        0x00, 0x00, 0,    0x00, 0,
+        0x00, 0x00, 1,    0x01, 0,
+        0x10, 0x01, 0,    0x11, 0,
+        0x10, 0x01, 1,    0x12, 0,
+        0xFF, 0x01, 0,    0x00, 1,
+        0xFF, 0x01, 1,    0x01, 1,
+        0xFF, 0xFF, 0,    0xFE, 1,
+        0xFF, 0xFF, 1,    0xFF, 1,
+        0x33, 0x34, 0,    0x67, 0,
+        0x33, 0x33, 1,    0x67, 0,
+        0x11, 0x22, 0,    0x33, 0,
+        0x33, 0x44, 0,    0x77, 0,
+        0x55, 0x22, 1,    0x78, 0,
+        0x90, 0x3A, 0,    0xCA, 0,
+        0x90, 0x30, 1,    0xC1, 0,
+        0x01, 0x02, 1,    0x04, 0,
+        0xAA, 0xBB, 0,    0x65, 1,
+    };
+
+    b32 Successful = true;
+
+    ResetCircuit();
+
+    wire_id A[8]   = {0};
+    wire_id B[8]   = {0};
+    wire_id Sum[8] = {0};
+
+    AddWires(A, 8);
+    AddWires(B, 8);
+    AddWires(Sum, 8);
+
+    wire_id C     = AddWire();
+    wire_id Carry = AddWire();
+
+    FullAdder(8, A, B, C, Sum, Carry);
+
+    u32 TestCount = ArrayCount(TestTable) / 5;
+
+    for (u32 TestIndex = 0; TestIndex < TestCount; TestIndex++)
+    {
+        u8* TestInputs  = TestTable  + (TestIndex * 5);
+        u8* TestOutputs = TestInputs + 3;
+
+        SetWires(A, 8, TestInputs[0]);
+        SetWires(B, 8, TestInputs[1]);
+        SetWire (C,    TestInputs[2]);
+
+        SimulateCircuit();
+
+        Successful &= ExpectWires(Sum, 8, TestOutputs[0]);
+        Successful &= ExpectWire (Carry,  TestOutputs[1]);
+    }
+
+    OutputTestResult(Str("FullAdder"), Successful);
+}
+
+local void TestDLatch(void)
+{
+    ResetCircuit();
+
+    b32 Successful = true;
+
+    wire_id Data   = AddWire();
+    wire_id Clock  = AddWire();
+    wire_id Out    = AddWire();
+    wire_id NotOut = AddWire();
+
+    DLatch(Data, Clock, Out, NotOut);
+
+    u32 PulseTime = 2;
+
+    SetWire(Clock, 0);
+
+    {
+        SetWire(Data, 1);
+        SimulateClockPulse(Clock, PulseTime);
+
+        Successful &= ExpectWire(Out, 1);
+        Successful &= ExpectWire(NotOut, 0);
+
+        for (u32 Index = 0; Index < 15; Index++)
+        {
+            SimulateClockPulse(Clock, PulseTime);
+
+            Successful &= ExpectWire(Out, 1);
+            Successful &= ExpectWire(NotOut, 0);
+        }
+
+        SetWire(Data, 0);
+        SimulateClockPulse(Clock, PulseTime);
+
+        Successful &= ExpectWire(Out, 0);
+        Successful &= ExpectWire(NotOut, 1);
+
+        for (u32 Index = 0; Index < 15; Index++)
+        {
+            SimulateClockPulse(Clock, PulseTime);
+
+            Successful &= ExpectWire(Out, 0);
+            Successful &= ExpectWire(NotOut, 1);
+        }
+    }
+
+    OutputTestResult(Str("DLatch"), Successful);
 }
