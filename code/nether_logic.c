@@ -1,16 +1,25 @@
 
+typedef enum
+{
+    GateKind_Unknown = 0,
+
+    GateKind_NAND,
+    GateKind_TriState,
+} gate_kind;
+
 typedef struct
 {
+    gate_kind Kind;
+
     wire_id A;
     wire_id B;
-
     wire_id Out;
-} nand;
+} gate;
 
 // NOTE(vak): Storage
 
 local wire Wires[65536] = {0};
-local nand Gates[65536] = {0};
+local gate Gates[65536] = {0};
 
 local u32 WireCount = 0;
 local u32 GateCount = 0;
@@ -48,13 +57,31 @@ local void SimulateCircuit(void)
 {
     for (u32 GateIndex = 0; GateIndex < GateCount; GateIndex++)
     {
-        nand* Gate = Gates + GateIndex;
+        gate* Gate = Gates + GateIndex;
 
-        wire_id A   = Gate->A;
-        wire_id B   = Gate->B;
-        wire_id Out = Gate->Out;
+        switch (Gate->Kind)
+        {
+            InvalidDefaultCase;
 
-        Wires[Out] = !(Wires[A] & Wires[B]);
+            case GateKind_NAND:
+            {
+                wire_id A   = Gate->A;
+                wire_id B   = Gate->B;
+                wire_id Out = Gate->Out;
+
+                Wires[Out] = !(Wires[A] & Wires[B]);
+            } break;
+
+            case GateKind_TriState:
+            {
+                wire_id Input  = Gate->A;
+                wire_id Enable = Gate->B;
+                wire_id Output = Gate->Out;
+
+                if (Wires[Enable])
+                    Wires[Output] = Wires[Input];
+            } break;
+        }
     }
 }
 
@@ -103,6 +130,17 @@ local b32 ExpectWire(wire_id ID, wire ExpectedBit)
     return (Result);
 }
 
+local void RandomWire(wire_id ID)
+{
+    u32 State = GetWallClock() & 0xFFFFFFFF;
+
+    State ^= (State << 13);
+    State ^= (State >> 17);
+    State ^= (State << 5);
+
+    SetWire(ID, State & 1);
+}
+
 local void AddWires(wire_id* IDs, u32 Count)
 {
     Assert(WireCount + Count <= ArrayCount(Wires));
@@ -143,6 +181,38 @@ local b32 ExpectWires(wire_id* IDs, u32 Count, u64 ExpectedBits)
     return (Result);
 }
 
+local void RandomWires(wire_id* IDs, u32 Count)
+{
+    u32 State = GetWallClock() & 0xFFFFFFFF;
+
+    for (u32 Index = 0; Index < Count; Index++)
+    {
+        State ^= (State << 13);
+        State ^= (State >> 17);
+        State ^= (State << 5);
+
+        SetWire(IDs[Index], State & 1);
+    }
+}
+
+// NOTE(vak): Tri-state
+
+local void TriState(wire_id Input, wire_id Enable, wire_id Output)
+{
+    Assert(Input  < WireCount);
+    Assert(Enable < WireCount);
+    Assert(Output < WireCount);
+
+    Assert(GateCount < ArrayCount(Gates));
+
+    gate* Gate = Gates + GateCount++;
+
+    Gate->Kind = GateKind_TriState;
+    Gate->A    = Input;
+    Gate->B    = Enable;
+    Gate->Out  = Output;
+}
+
 // NOTE(vak): Logic gates
 
 local void NAND(wire_id A, wire_id B, wire_id Out)
@@ -153,11 +223,12 @@ local void NAND(wire_id A, wire_id B, wire_id Out)
 
     Assert(GateCount < ArrayCount(Gates));
 
-    nand* Gate = Gates + GateCount++;
+    gate* Gate = Gates + GateCount++;
 
-    Gate->A   = A;
-    Gate->B   = B;
-    Gate->Out = Out;
+    Gate->Kind = GateKind_NAND;
+    Gate->A    = A;
+    Gate->B    = B;
+    Gate->Out  = Out;
 }
 
 local void AND(wire_id A, wire_id B, wire_id Out)
@@ -318,22 +389,30 @@ local void DFlipFlop(wire_id Data, wire_id Clock, wire_id Out, wire_id NotOut)
     DLatch(A, NotClock, Out, NotOut);
 }
 
-// NOTE(vak): Tests
+// NOTE(vak): Memory units
 
-local void OutputTestResult(string Name, b32 Successful)
+local void Register(u32 BitCount, wire_id* Data, wire_id WriteEnable, wire_id Clock, wire_id* Out)
 {
-    usize SoFar = 0;
+    Assert(BitCount >= 1);
 
-    SoFar += Print(Str("["));
-    SoFar += Print(Name);
-    SoFar += Print(Str("]"));
-    SoFar += Print(Str(":"));
+    wire_id W    = WriteEnable;
+    wire_id NotW = AddWire();
 
-    if (SoFar < TestResultPrintPadding)
-        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
+    NOT(W, NotW);
 
-    Println(Successful ? Str("[SUCCESS]") : Str("[FAILED]"));
+    for (u32 BitIndex = 0; BitIndex < BitCount; BitIndex++)
+    {
+        wire_id D = AddWire();
+        wire_id NotOut = AddWire();
+
+        TriState(Data[BitIndex], W,    D);
+        TriState(Out[BitIndex],  NotW, D);
+
+        DFlipFlop(D, Clock, Out[BitIndex], NotOut);
+    }
 }
+
+// NOTE(vak): Tests
 
 local b32 VerifyTruthTable(
     wire* TruthTable, u32 RowCount,
@@ -373,6 +452,51 @@ local b32 VerifyTruthTable(
 
 Failed:
     return (false);
+}
+
+local void OutputTestResult(string Name, b32 Successful)
+{
+    usize SoFar = 0;
+
+    SoFar += Print(Str("["));
+    SoFar += Print(Name);
+    SoFar += Print(Str("]"));
+    SoFar += Print(Str(":"));
+
+    if (SoFar < TestResultPrintPadding)
+        PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
+
+    Println(Successful ? Str("[SUCCESS]") : Str("[FAILED]"));
+}
+
+local void TestTriState(void)
+{
+    b32 Successful = true;
+
+    ResetCircuit();
+
+    wire_id In  = AddWire();
+    wire_id En  = AddWire();
+    wire_id Out = AddWire();
+
+    TriState(In, En, Out);
+
+    RandomizeWireState();
+    SimulateCircuit();
+
+    SetWire(En, 1);
+
+    SetWire(In, 0);
+    SimulateCircuit();
+
+    Successful &= ExpectWire(Out, 0);
+
+    SetWire(In, 1);
+    SimulateCircuit();
+
+    Successful &= ExpectWire(Out, 1);
+
+    OutputTestResult(Str("TriState"), Successful);
 }
 
 local void TestLogicGates(void)
@@ -520,7 +644,7 @@ local void TestHalfAdder(void)
 
     ResetCircuit();
 
-    u32 BitCounts[] = {6, 8, 14, 16, 20, 27, 32};
+    u32 BitCounts[] = {1, 3, 6, 8, 14, 16, 20, 27, 32};
 
     wire_id A[32]   = {0};
     wire_id B[32]   = {0};
@@ -566,7 +690,7 @@ local void TestFullAdder(void)
 
     ResetCircuit();
 
-    u32 BitCounts[] = {6, 8, 14, 16, 20, 27, 32};
+    u32 BitCounts[] = {1, 3, 6, 8, 14, 16, 20, 27, 32};
 
     wire_id A[32]   = {0};
     wire_id B[32]   = {0};
@@ -620,7 +744,7 @@ local void TestDLatch(void)
 
     DLatch(Data, Clock, Out, NotOut);
 
-    u32 PulseTime = 2;
+    u32 PulseTime = 2 + (GetWallClock() & 15);
 
     RandomizeWireState();
     SimulateClockCycle(Clock, PulseTime);
@@ -673,7 +797,7 @@ local void TestDFlipFlop(void)
 
     DFlipFlop(Data, Clock, Out, NotOut);
 
-    u32 PulseTime = 2;
+    u32 PulseTime = 2 + (GetWallClock() & 15);
 
     RandomizeWireState();
     SimulateClockCycle(Clock, PulseTime);
@@ -709,4 +833,57 @@ local void TestDFlipFlop(void)
     }
 
     OutputTestResult(Str("DFlipFlop"), Successful);
+}
+
+local void TestRegister(void)
+{
+    b32 Successful = true;
+
+    ResetCircuit();
+
+    u32 BitCount = 8;
+
+    wire_id Data[8] = {0};
+    wire_id Out[8]  = {0};
+
+    AddWires(Data, 8);
+    AddWires(Out,  8);
+
+    wire_id Clock       = AddWire();
+    wire_id WriteEnable = AddWire();
+
+    Register(8, Data, WriteEnable, Clock, Out);
+
+    u32 PulseTime = 2 + (GetWallClock() & 15);
+
+    for (u32 Index = 0; Index < 512; Index++)
+    {
+        RandomizeWireState();
+
+        RandomWires(Data, 8);
+        SetWire(WriteEnable, 1);
+
+        u64 Expected = GetWires(Data, 8);
+
+        u32 WriteCycles = 2 + (GetWallClock() & 7);
+        for (u32 Cycle = 0; Cycle < WriteCycles; Cycle++)
+        {
+            SimulateClockCycle(Clock, PulseTime);
+        }
+
+        Successful &= ExpectWires(Out, 8, Expected);
+
+        SetWire(WriteEnable, 0);
+
+        u32 ReadCycles = 1 + (GetWallClock() & 63);
+        for (u32 Cycle = 0; Cycle < ReadCycles; Cycle++)
+        {
+            RandomWires(Data, 8);
+            SimulateClockCycle(Clock, PulseTime);
+
+            Successful &= ExpectWires(Out, 8, Expected);
+        }
+    }
+
+    OutputTestResult(Str("Register"), Successful);
 }

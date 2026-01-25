@@ -1,6 +1,13 @@
 
 local s32 Main(void)
 {
+    // NOTE(vak): Tri-state
+    {
+        TestTriState();
+    }
+
+    PrintNewLine();
+
     // NOTE(vak): Logic gates
     {
         TestLogicGates();
@@ -18,10 +25,11 @@ local s32 Main(void)
 
     PrintNewLine();
 
-    // NOTE(vak): Latches and flip flops
+    // NOTE(vak): Memory
     {
         TestDLatch();
         TestDFlipFlop();
+        TestRegister();
     }
 
     return (0);

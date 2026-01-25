@@ -6,10 +6,13 @@
 #define local   static // NOTE(vak): Function/variable is only visible within the current translation unit
 #define persist static // NOTE(vak): Variable retains its value even after the function exits
 
+#define InvalidCodePath *(int*)0 = 0
+#define InvalidDefaultCase default: { InvalidCodePath; } break
+
 // NOTE(vak): Macros
 
 #define CTAssert(Expression) _Static_assert(Expression, "Compile-time assertion failed")
-#define Assert(Expression) if (!(Expression)) *(int*)0 = 0
+#define Assert(Expression) if (!(Expression)) InvalidCodePath
 
 #define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
