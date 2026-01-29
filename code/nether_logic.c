@@ -5,6 +5,7 @@ typedef enum
 
     GateKind_NAND,
     GateKind_TriState,
+    GateKind_BUF,
 } gate_kind;
 
 typedef struct
@@ -18,8 +19,8 @@ typedef struct
 
 // NOTE(vak): Storage
 
-local wire CircuitWires[65536] = {0};
-local gate CircuitGates[65536] = {0};
+local wire CircuitWires[256*1024] = {0};
+local gate CircuitGates[256*1024] = {0};
 
 local u32 CircuitWireCount = 0;
 local u32 CircuitGateCount = 0;
@@ -80,6 +81,14 @@ local void SimulateCircuit(void)
 
                 if (CircuitWires[Enable])
                     CircuitWires[Output] = CircuitWires[Input];
+            } break;
+
+            case GateKind_BUF:
+            {
+                wire_id Input  = Gate->A;
+                wire_id Output = Gate->B;
+
+                CircuitWires[Output] = CircuitWires[Input];
             } break;
         }
     }
@@ -196,6 +205,23 @@ local void RandomWires(wires Wires)
     }
 }
 
+// NOTE(vak): Buffer
+
+local void BUF(wire_id Input, wire_id Output)
+{
+    Assert(Input  < CircuitWireCount);
+    Assert(Output < CircuitWireCount);
+
+    Assert(CircuitGateCount < ArrayCount(CircuitGates));
+
+    gate* Gate = CircuitGates + CircuitGateCount++;
+
+    Gate->Kind = GateKind_BUF;
+    Gate->A    = Input;
+    Gate->B    = Output;
+    Gate->Out  = 0;
+}
+
 // NOTE(vak): Tri-state
 
 local void TriState(wire_id Input, wire_id Enable, wire_id Output)
@@ -282,6 +308,160 @@ local void XOR(wire_id A, wire_id B, wire_id Out)
 local void NOT(wire_id In, wire_id Out)
 {
     NAND(In, In, Out);
+}
+
+local void NOTxN(wires In, wires Out)
+{
+    Assert(Out.Count >= 1);
+    Assert(In.Count == Out.Count);
+
+    for (u32 Index = 0; Index < Out.Count; Index++)
+    {
+        NOT(In.First + Index, Out.First + Index);
+    }
+}
+
+local void ANDxN(wires A, wires B, wires Out)
+{
+    Assert(Out.Count >= 1);
+    Assert(A.Count == Out.Count);
+    Assert(B.Count == Out.Count);
+
+    for (u32 Index = 0; Index < Out.Count; Index++)
+    {
+        AND(A.First + Index, B.First + Index, Out.First + Index);
+    }
+}
+
+local void ORxN(wires A, wires B, wires Out)
+{
+    Assert(Out.Count >= 1);
+    Assert(A.Count == Out.Count);
+    Assert(B.Count == Out.Count);
+
+    for (u32 Index = 0; Index < Out.Count; Index++)
+    {
+        OR(A.First + Index, B.First + Index, Out.First + Index);
+    }
+}
+
+local void ANDx1(wires In, wire_id Out)
+{
+    Assert(In.Count >= 2);
+
+    wire_id Next = (In.Count == 2) ? Out : AddWire();
+
+    AND(In.First + 0, In.First + 1, Next);
+
+    for (u32 Index = 2; Index < In.Count; Index++)
+    {
+        wire_id Last = Next;
+
+        if (Index + 1 == In.Count)
+            Next = Out;
+        else
+            Next = AddWire();
+
+        AND(Last, In.First + Index, Next);
+    }
+}
+
+local void ORx1(wires In, wire_id Out)
+{
+    Assert(In.Count >= 2);
+
+    wire_id Next = (In.Count == 2) ? Out : AddWire();
+
+    OR(In.First + 0, In.First + 1, Next);
+
+    for (u32 Index = 2; Index < In.Count; Index++)
+    {
+        wire_id Last = Next;
+
+        if (Index + 1 == In.Count)
+            Next = Out;
+        else
+            Next = AddWire();
+
+        OR(Last, In.First + Index, Next);
+    }
+}
+
+// NOTE(vak): Multiplexer
+
+local void Mux(wires In, wires Select, wire_id Out)
+{
+    Assert(Select.Count >= 1);
+    Assert(Select.Count <= 31);
+
+    usize Count = 1ull << Select.Count;
+
+    Assert(In.Count == Count);
+
+    wires SelectOuts = AddWires(In.Count);
+    wires NotSelect  = AddWires(Select.Count);
+
+    NOTxN(Select, NotSelect);
+
+    for (u32 DataIndex = 0; DataIndex < In.Count; DataIndex++)
+    {
+        wires WirePattern = AddWires(Select.Count + 1);
+        u32   BitPattern  = DataIndex;
+
+        for (u32 Bit = 0; Bit < Select.Count; Bit++)
+        {
+            if ((BitPattern >> Bit) & 1)
+            {
+                BUF(Select.First + Bit, WirePattern.First + Bit);
+            }
+            else
+            {
+                BUF(NotSelect.First + Bit, WirePattern.First + Bit);
+            }
+        }
+
+        BUF(In.First + DataIndex, WirePattern.First + Select.Count);
+
+        ANDx1(WirePattern, SelectOuts.First + DataIndex);
+    }
+
+    ORx1(SelectOuts, Out);
+}
+
+local void Demux(wire_id In, wires Select, wires Out)
+{
+    Assert(Select.Count >= 1);
+    Assert(Select.Count <= 31);
+
+    usize Count = 1ull << Select.Count;
+
+    Assert(Out.Count == Count);
+
+    wires NotSelect = AddWires(Select.Count);
+
+    NOTxN(Select, NotSelect);
+
+    for (u32 Index = 0; Index < Out.Count; Index++)
+    {
+        wires WirePattern = AddWires(Select.Count + 1);
+        u32   BitPattern  = Index;
+
+        for (u32 Bit = 0; Bit < Select.Count; Bit++)
+        {
+            if ((BitPattern >> Bit) & 1)
+            {
+                BUF(Select.First + Bit, WirePattern.First + Bit);
+            }
+            else
+            {
+                BUF(NotSelect.First + Bit, WirePattern.First + Bit);
+            }
+        }
+
+        BUF(In, WirePattern.First + Select.Count);
+
+        ANDx1(WirePattern, Out.First + Index);
+    }
 }
 
 // NOTE(vak): Adder
@@ -461,18 +641,11 @@ local void ALU(wires A, wires B, wire_id SubtractOp, wires Out, wire_id Carry)
     Assert(A.Count == BitCount);
     Assert(B.Count == BitCount);
 
-    wire_id NotSubtractOp = AddWire();
-
     wires InA = A;
     wires InB = AddWires(B.Count);
 
-    NOT(SubtractOp, NotSubtractOp);
-
     for (u32 Index = 0; Index < B.Count; Index++)
-    {
-        TriState   (B.First + Index, NotSubtractOp, InB.First + Index);
-        TriStateNOT(B.First + Index,    SubtractOp, InB.First + Index);
-    }
+        XOR(B.First + Index, SubtractOp, InB.First + Index);
 
     wire_id CarryBuffer = AddWire();
 
@@ -534,6 +707,23 @@ local void OutputTestResult(string Name, b32 Successful)
         PrintRepeat(Str(" "), TestResultPrintPadding - SoFar);
 
     Println(Successful ? Str("[SUCCESS]") : Str("[FAILED]"));
+}
+
+local void TestBUF(void)
+{
+    persist wire TruthBUF[2 * 2] =
+    {
+        0, 0,
+        1, 1
+    };
+
+    wires Inputs  = AddWires(1);
+    wires Outputs = AddWires(1);
+
+    ResetGates();
+    BUF(Inputs.First, Outputs.First);
+
+    OutputTestResult(Str("BUF"), VerifyTruthTable(TruthBUF, 2, Inputs, Outputs));
 }
 
 local void TestTriState(void)
@@ -647,6 +837,234 @@ local void TestLogicGates(void)
 
         OutputTestResult(Str("NOT"), VerifyTruthTable(TruthNOT, 2, Inputs, Outputs));
     }
+
+    // NOTE(vak): NOTxN
+    {
+        b32 Successful = true;
+
+        for (usize Index = 0; Index < 10; Index++)
+        {
+            u32 BitCount = 1 + (GetWallClock() & 63);
+            u64 Mask     = (BitCount == 64) ? (U64Max) : ((1ull << BitCount) - 1);
+
+            ResetCircuit();
+
+            wires In  = AddWires(BitCount);
+            wires Out = AddWires(BitCount);
+
+            NOTxN(In, Out);
+
+            for (u32 TestIndex = 0; TestIndex < 1024; TestIndex++)
+            {
+                RandomWires(In);
+                SimulateCircuit();
+
+                u64 ValueIn  = GetWires(In);
+                u64 Actual   = GetWires(Out);
+                u64 Expected = (~ValueIn) & Mask;
+
+                Successful &= ExpectWires(Out, Expected);
+            }
+        }
+
+        OutputTestResult(Str("NOTxN"), Successful);
+    }
+
+    // NOTE(vak): ANDxN
+    {
+        b32 Successful = true;
+
+        for (usize Index = 0; Index < 10; Index++)
+        {
+            u32 BitCount = 1 + (GetWallClock() & 63);
+
+            ResetCircuit();
+
+            wires A   = AddWires(BitCount);
+            wires B   = AddWires(BitCount);
+            wires Out = AddWires(BitCount);
+
+            ANDxN(A, B, Out);
+
+            for (u32 TestIndex = 0; TestIndex < 1024; TestIndex++)
+            {
+                RandomWires(A);
+                RandomWires(B);
+                SimulateCircuit();
+
+                u64 ValueA   = GetWires(A);
+                u64 ValueB   = GetWires(B);
+                u64 Expected = (ValueA & ValueB);
+
+                Successful &= ExpectWires(Out, Expected);
+            }
+        }
+
+        OutputTestResult(Str("ANDxN"), Successful);
+    }
+
+    // NOTE(vak): ORxN
+    {
+        b32 Successful = true;
+
+        for (usize Index = 0; Index < 10; Index++)
+        {
+            u32 BitCount = 1 + (GetWallClock() & 63);
+
+            ResetCircuit();
+
+            wires A   = AddWires(BitCount);
+            wires B   = AddWires(BitCount);
+            wires Out = AddWires(BitCount);
+
+            ORxN(A, B, Out);
+
+            for (u32 TestIndex = 0; TestIndex < 1024; TestIndex++)
+            {
+                RandomWires(A);
+                RandomWires(B);
+                SimulateCircuit();
+
+                u64 ValueA   = GetWires(A);
+                u64 ValueB   = GetWires(B);
+                u64 Expected = (ValueA | ValueB);
+
+                Successful &= ExpectWires(Out, Expected);
+            }
+        }
+
+        OutputTestResult(Str("ORxN"), Successful);
+    }
+
+    // NOTE(vak): ANDx1
+    {
+        b32 Successful = true;
+
+        for (usize Index = 0; Index < 10; Index++)
+        {
+            u32 BitCount = 2 + (GetWallClock() & 62);
+            u64 Mask     = (BitCount == 64) ? (U64Max) : ((1ull << BitCount) - 1);
+
+            ResetCircuit();
+
+            wires   In  = AddWires(BitCount);
+            wire_id Out = AddWire();
+
+            ANDx1(In, Out);
+
+            for (u32 TestIndex = 0; TestIndex < 1024; TestIndex++)
+            {
+                RandomWires(In);
+                SimulateCircuit();
+
+                u64 ValueIn   = GetWires(In);
+                wire Expected = (ValueIn == Mask);
+
+                Successful &= ExpectWire(Out, Expected);
+            }
+        }
+
+        OutputTestResult(Str("ANDx1"), Successful);
+    }
+
+    // NOTE(vak): ORx1
+    {
+        b32 Successful = true;
+
+        for (usize Index = 0; Index < 10; Index++)
+        {
+            u32 BitCount = 2 + (GetWallClock() & 62);
+
+            ResetCircuit();
+
+            wires   In  = AddWires(BitCount);
+            wire_id Out = AddWire();
+
+            ORx1(In, Out);
+
+            for (u32 TestIndex = 0; TestIndex < 1024; TestIndex++)
+            {
+                RandomWires(In);
+                SimulateCircuit();
+
+                u64 ValueIn   = GetWires(In);
+                wire Expected = (ValueIn != 0);
+
+                Successful &= ExpectWire(Out, Expected);
+            }
+        }
+
+        OutputTestResult(Str("ORx1"), Successful);
+    }
+}
+
+local void TestMux(void)
+{
+    b32 Successful = true;
+
+    for (usize Index = 0; Index < 10; Index++)
+    {
+        u32 BitCount = 1 + (GetWallClock() & 7);
+
+        ResetCircuit();
+
+        wires Select = AddWires(BitCount);
+        wires   In   = AddWires(1 << BitCount);
+        wire_id Out  = AddWire();
+
+        Mux(In, Select, Out);
+
+        for (u32 TestIndex = 0; TestIndex < 256; TestIndex++)
+        {
+            RandomWires(Select);
+            RandomWires(In);
+
+            SimulateCircuit();
+
+            u32  ValueSelect = (u32) GetWires(Select);
+            wire Expected    = GetWire(In.First + ValueSelect);
+
+            Successful &= ExpectWire(Out, Expected);
+        }
+    }
+
+    OutputTestResult(Str("Mux"), Successful);
+}
+
+local void TestDemux(void)
+{
+    b32 Successful = true;
+
+    for (usize Index = 0; Index < 10; Index++)
+    {
+        u32 BitCount = 1 + (GetWallClock() & 7);
+
+        ResetCircuit();
+
+        wires   Select = AddWires(BitCount);
+        wire_id In     = AddWire();
+        wires   Out    = AddWires(1 << BitCount);
+
+        Demux(In, Select, Out);
+
+        for (u32 TestIndex = 0; TestIndex < 256; TestIndex++)
+        {
+            RandomWires(Select);
+            RandomWire (In);
+
+            SimulateCircuit();
+
+            u32  ValueSelect = (u32) GetWires(Select);
+            wire Expected    = GetWire(In);
+
+            Successful &= ExpectWire(Out.First + ValueSelect, Expected);
+
+            if (!Successful)
+                __debugbreak();
+        }
+    }
+
+    OutputTestResult(Str("Demux"), Successful);
 }
 
 local void TestHalfAdder1(void)
@@ -925,8 +1343,6 @@ local void TestRegister(void)
             {
                 SimulateClockCycle(Clock, PulseTime);
             }
-
-            u64 Debug = GetWires(Out);
 
             Successful &= ExpectWires(Out, Expected);
 

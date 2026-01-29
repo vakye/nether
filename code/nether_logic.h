@@ -35,6 +35,10 @@ local void    SetWires   (wires Wires, u64 Bits);
 local b32     ExpectWires(wires Wires, u64 ExpectedBits);
 local void    RandomWires(wires Wires);
 
+// NOTE(vak): Buffer
+
+local void BUF(wire_id Input, wire_id Output);
+
 // NOTE(vak): Tri-state
 
 local void TriState   (wire_id Input, wire_id Enable, wire_id Output);
@@ -48,6 +52,18 @@ local void OR  (wire_id A, wire_id B, wire_id Out);
 local void NOR (wire_id A, wire_id B, wire_id Out);
 local void XOR (wire_id A, wire_id B, wire_id Out);
 local void NOT (wire_id In, wire_id Out);
+
+local void NOTxN(wires In, wires Out);
+local void ANDxN(wires A, wires B, wires Out);
+local void ORxN (wires A, wires B, wires Out);
+
+local void ANDx1(wires In, wire_id Out);
+local void ORx1 (wires In, wire_id Out);
+
+// NOTE(vak): Multiplexer
+
+local void Mux  (wires In, wires Select, wire_id Out);
+local void Demux(wire_id In, wires Select, wires Out);
 
 // NOTE(vak): Adder
 
@@ -66,8 +82,8 @@ local void DLatch(wire_id Data, wire_id Enable, wire_id Out, wire_id NotOut);
 
 // NOTE(vak):
 // Stores the 'Data' bit after a single clock cycle.
-// Minimum pulse time:  2
-// Minimum latch cycle: 1
+// Minimum pulse time:   2
+// Minimum latch pulses: 2 (1 cycle)
 local void DFlipFlop(wire_id Data, wire_id Clock, wire_id Out, wire_id NotOut);
 
 // NOTE(vak): Central components
@@ -75,13 +91,21 @@ local void DFlipFlop(wire_id Data, wire_id Clock, wire_id Out, wire_id NotOut);
 // NOTE(vak):
 // Stores the 'Data' bit after two clock cycles when 'WriteEnable' is high.
 // Minimum pulse time:   2
-// Minimum write cycles: 2
+// Minimum write pulses: 4 (2 cycles)
 local void Register(wires Data, wire_id WriteEnable, wire_id Clock, wires Out);
 
-// NOTE(vak):
+// NOTE(vak): Arithmetic Logic Unit
 // If `SubtractOp` is 0: Out = A + B
 // If `SubtractOp` is 1: Out = A - B
 local void ALU(wires A, wires B, wire_id SubtractOp, wires Out, wire_id Carry);
+
+// NOTE(vak): 256 bytes RAM
+// If `ChipEnable` is 1:
+//     If `WriteEnable` is 0: Data8 = Bytes[Address8]
+//     If `WriteEnable` is 1: Bytes[Address8] = Data8
+// Minimum read  time: 1
+// Minimum write time: 2
+local void RAM256(wires Address8, wires Data8, wire_id WriteEnable, wire_id ChipEnable);
 
 // NOTE(vak): Testing
 
@@ -94,8 +118,11 @@ local b32 VerifyTruthTable(
 
 local void OutputTestResult(string Name, b32 Successful);
 
+local void TestBUF(void);
 local void TestTriState(void);
 local void TestLogicGates(void);
+
+local void TestMUXx1(void);
 
 local void TestHalfAdder1(void);
 local void TestFullAdder1(void);
@@ -104,6 +131,6 @@ local void TestFullAdder(void);
 
 local void TestDLatch(void);
 local void TestDFlipFlop(void);
-local void TestRegister(void);
 
+local void TestRegister(void);
 local void TestALU(void);

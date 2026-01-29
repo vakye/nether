@@ -1,16 +1,21 @@
 
 local s32 Main(void)
 {
-    // NOTE(vak): Tri-state
+    u32 TestCount = 0;
+
+    // NOTE(vak): Basic
     {
+        TestBUF();
         TestTriState();
+        TestLogicGates();
     }
 
     PrintNewLine();
 
-    // NOTE(vak): Logic gates
+    // NOTE(vak): Multiplexers
     {
-        TestLogicGates();
+        TestMux();
+        TestDemux();
     }
 
     PrintNewLine();
